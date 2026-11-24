@@ -2441,6 +2441,64 @@ function custTiles(){
   if (out.length) { var big = out.splice(bi, 1)[0]; big.xl = 1; out.unshift(big); }
   return out.map(function(x, k){ return '<div class="tile' + (x.xl ? ' xl' : x.wide ? ' wide' : '') + '" data-r style="--i:' + (k % 6) + '">' + x.h + '</div>'; });
 }
+// ---------- 사람 몸 그림: 담보 이름으로 부위를 찾아 보장 있는 곳을 표시 ----------
+var BODY_PARTS = [
+  { id: "brain", n: "뇌", x: 100, y: 26, re: /뇌|치매|2대질환/ },
+  { id: "tooth", n: "치아", x: 100, y: 50, re: /치아/ },
+  { id: "thyroid", n: "갑상선", x: 100, y: 80, re: /갑상선|유사암/ },
+  { id: "lung", n: "폐", x: 76, y: 114, cancer: 1 },
+  { id: "heart", n: "심장", x: 120, y: 124, re: /심장|심근|협심|순환계|2대질환/ },
+  { id: "breast", n: "유방", x: 100, y: 152, cancer: 1 },
+  { id: "stomach", n: "위", x: 80, y: 182, cancer: 1 },
+  { id: "liver", n: "간", x: 124, y: 178, cancer: 1 },
+  { id: "colon", n: "대장", x: 100, y: 212, cancer: 1 },
+  { id: "uterus", n: "자궁·난소", x: 100, y: 244, cancer: 1, sex: "여" },
+  { id: "prostate", n: "전립선", x: 100, y: 244, cancer: 1, sex: "남" },
+  { id: "bone", n: "뼈(골절)", x: 156, y: 176, re: /골절|깁스/ }
+];
+var BODY_ST = null;
+function bodyMatch(p, name){
+  if (p.cancer) return /암/.test(name) && !/유사암/.test(name) || name.indexOf(p.n + "암") >= 0;
+  return p.re.test(name);
+}
+function bodyBuild(d){
+  var items = []; (d.groups || []).forEach(function(g){ (g.items || []).forEach(function(it){ if ((+it.now || 0) > 0 || (+it.add || 0) > 0) items.push(it); }); });
+  var parts = BODY_PARTS.filter(function(p){ return !p.sex || !d.sex || d.sex === p.sex; }).map(function(p){
+    var hit = items.filter(function(it){ return bodyMatch(p, it.n); });
+    var cur = hit.some(function(it){ return (+it.now || 0) > 0; }), nw = hit.some(function(it){ return (+it.add || 0) > 0; });
+    return { p: p, hit: hit, st: nw && !cur ? "new" : cur ? "cur" : "no" };
+  });
+  var used = {}; parts.forEach(function(x){ x.hit.forEach(function(it){ used[it.n] = 1; }); });
+  var rest = items.filter(function(it){ return !used[it.n]; });
+  BODY_ST = { parts: parts, rest: rest };
+  return BODY_ST;
+}
+function bodyList(arr){
+  return arr.map(function(it){
+    var t = (typeof TERMS !== "undefined" && it.rider && TERMS[it.rider]) ? TERMS[it.rider] : null;
+    return '<li><b>' + esc(it.n) + '</b> ' + ((+it.now || 0) > 0 ? '지금 ' + won(it.now) : '') + ((+it.add || 0) > 0 ? ' <span style="color:#D6334C">+ 이번에 ' + won(it.add) + '</span>' : '')
+      + (t ? '<br><small style="color:#6B7280">' + esc(t.when) + '</small>' : '') + '</li>';
+  }).join("");
+}
+function bodyPick(id){
+  if (!BODY_ST) return;
+  var box = document.getElementById("bodyDetail"); if (!box) return;
+  var x = BODY_ST.parts.filter(function(q){ return q.p.id === id; })[0]; if (!x) return;
+  box.innerHTML = '<h3 style="margin:0 0 8px;font-size:17px">' + esc(x.p.n) + '</h3>' + (x.hit.length ? '<ul style="margin:0;padding-left:18px;line-height:1.7;font-size:14px">' + bodyList(x.hit) + '</ul>' : '<p style="margin:0;color:#6B7280;font-size:14px">이 부위로 받는 보장이 아직 없어요.</p>');
+  Array.prototype.forEach.call(document.querySelectorAll("#bodySvg .bp"), function(e){ e.setAttribute("stroke-width", e.getAttribute("data-id") === id ? "4" : "2"); });
+}
+function bodyHtml(d){
+  var B = bodyBuild(d), col = { new: "#D6334C", cur: "#0F766E", no: "#C4C8CF" };
+  var svg = '<svg id="bodySvg" viewBox="0 0 200 330" style="width:100%;max-width:240px;display:block;margin:0 auto" role="img" aria-label="몸 부위별 보장">'
+    + '<g fill="#EEF0F3" stroke="#D5D9DF" stroke-width="2"><circle cx="100" cy="36" r="26"/><rect x="88" y="60" width="24" height="22" rx="8"/><rect x="58" y="78" width="84" height="150" rx="28"/><rect x="34" y="84" width="22" height="120" rx="11"/><rect x="144" y="84" width="22" height="120" rx="11"/><rect x="66" y="222" width="30" height="100" rx="14"/><rect x="104" y="222" width="30" height="100" rx="14"/></g>'
+    + B.parts.map(function(x){ return '<g style="cursor:pointer" onclick="bodyPick(\'' + x.p.id + '\')"><circle class="bp" data-id="' + x.p.id + '" cx="' + x.p.x + '" cy="' + x.p.y + '" r="11" fill="' + col[x.st] + '" stroke="#fff" stroke-width="2"/></g>'; }).join("")
+    + '</svg>';
+  var lg = '<div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;font-size:12px;color:#6B7280;margin-top:10px"><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#0F766E;margin-right:4px"></i>지금 보장</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#D6334C;margin-right:4px"></i>이번에 새로 생김</span><span><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#C4C8CF;margin-right:4px"></i>보장 없음</span></div>';
+  return '<section class="sec"><div class="w"><div data-r><span class="eyebrow"><i></i>몸으로 보기</span><h2>내 몸 어디가<br><span class="mut">보장</span>되는지 봐요</h2><p class="desc">점을 눌러 보세요. 그 부위로 받는 보장이 나와요.</p></div>'
+    + '<div class="bz" data-r><div class="core">' + svg + lg + '<div id="bodyDetail" style="margin-top:16px;padding:14px;border-radius:12px;background:#F6F7F9;min-height:48px;font-size:14px;color:#6B7280">점을 눌러 보세요.</div>'
+    + (B.rest.length ? '<details style="margin-top:12px"><summary style="cursor:pointer;font-size:14px">몸 전체·그 밖의 보장 ' + B.rest.length + '가지</summary><ul style="margin:8px 0 0;padding-left:18px;line-height:1.7;font-size:14px">' + bodyList(B.rest) + '</ul></details>' : '')
+    + '<p style="margin:12px 0 0;font-size:12px;color:#9AA0A8">암 보장은 부위별로 나뉘지 않고 모든 부위의 암에 적용돼요. 실제 지급 조건은 약관을 따라요.</p></div></div></div></section>';
+}
 function renderCust(){
   cvAssets(); compute();
   var d = M.d, who = d.customer ? esc(d.customer) + ' 고객님' : '고객님', top = M.top[0], ph = d.phone || '', tel = telNum(ph), kk = kakaoOk(d.kakao) ? d.kakao : "", np = !!d.noProp;
@@ -2569,6 +2627,7 @@ function renderCust(){
            + '<em class="n">' + (x.svc ? '간병인 지원' : '하루 ' + won(x.v)) + (!np && +x.it.add > 0 ? '<i>' + (+x.it.now > 0 ? '늘어남' : '새로') + '</i>' : '') + '</em></li>'; }).join('') + '</ul>'
        : '<div class="cg0">' + ico("danger-triangle-bold-duotone") + '<span>간병인 보장이 없어요. 입원해서 간병인을 쓰면 그 비용은 모두 본인이 내야 해요.</span></div>')
      + '<p class="fn">실제 지급 조건(입원 기간, 병원 종류)은 약관을 따라요. 간병인 지원일당은 회사가 간병인을 보내 주는 방식이에요.</p></div></div></div></section>';
+  try { h += bodyHtml(d); } catch (e) { console.error(e); }
   // 보장 범위 고리
   var ck = RANGES.checks, nT = ck.length, R1 = 140, R2 = 112, L = 2 * Math.PI * R1, L2 = 2 * Math.PI * R2, nA = np ? M.nNow : M.nAft, nN = d.noAna ? 0 : M.nNow;
   h += '<section class="sec tint"><div class="w rng"><div data-r><span class="eyebrow"><i></i>보장 범위</span><h2>뇌·심장은<br><span class="mut">병 이름이</span> 넓어야<br>받아요</h2>'
