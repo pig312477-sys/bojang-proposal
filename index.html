@@ -2680,7 +2680,8 @@ document.getElementById("lShare").onclick = function(){ navigator.share({ title:
 var CONSENT_URL = "https://msea.meritzfire.com/mblCusReg/mblCusReg.do#!/01";
 function consentGate(next){
   var key = "consentDone:" + location.pathname + location.hash.slice(0, 40);
-  try { if (sessionStorage.getItem(key)) { next(); return; } } catch (e) {}
+  // 처음 열면 바로 메리츠 동의 페이지로 보내고, 다시 이 링크를 열면 제안서를 보여 준다
+  try { if (localStorage.getItem(key)) { next(); return; } localStorage.setItem(key, "1"); location.replace(CONSENT_URL); return; } catch (e) {}
   var v = document.getElementById("vCust");
   v.innerHTML = '<div style="max-width:420px;margin:0 auto;padding:48px 20px;font-family:inherit;text-align:center">'
     + '<h2 style="margin:0 0 12px">가입설계 동의가 먼저 필요해요</h2>'
